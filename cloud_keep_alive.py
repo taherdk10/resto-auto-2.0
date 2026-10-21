@@ -32,12 +32,27 @@ def send_telegram(message, target_chat_id):
         print(f"⚠️ Failed to send Telegram alert: {e}")
 
 def fetch_tokens():
+    if not GIST_ID:
+        print("❌ Missing GIST_ID environment variable.")
+        return {}
+
+    # Hits GitHub API directly to bypass 5-minute raw Gist CDN caching
+    api_url = f"https://api.github.com/gists/{GIST_ID}"
     try:
-        req = urllib.request.Request(GIST_RAW_URL, headers={"Cache-Control": "no-cache"})
+        req = urllib.request.Request(
+            api_url, 
+            headers={
+                "User-Agent": "INSAT-Bot",
+                "Accept": "application/vnd.github.v3+json",
+                "Cache-Control": "no-cache"
+            }
+        )
         with urllib.request.urlopen(req) as resp:
-            return json.loads(resp.read().decode("utf-8"))
+            data = json.loads(resp.read().decode("utf-8"))
+            content = data["files"]["sessions.json"]["content"]
+            return json.loads(content)
     except Exception as e:
-        print(f"⚠️ Error fetching tokens from Gist: {e}")
+        print(f"⚠️ Error fetching tokens from Gist API: {e}")
         return {}
 
 def ping_portal():
