@@ -5,19 +5,18 @@ from playwright.sync_api import sync_playwright
 
 TARGET_URL = "https://quickcardcampus.digi-sys.net/dashboard/admin/restaurant.php?page=reservation"
 
-# Read directly from environment secrets
 GIST_ID = os.environ.get("GIST_ID")
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
-TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
+ADMIN_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")  # YOUR Admin Chat ID secret
 
-def send_alert(message):
-    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
-        print("⚠️ Telegram credentials not configured in environment. Skipping alert.")
+def send_telegram(message, target_chat_id):
+    """Sends Telegram message only if target_chat_id is valid and non-empty."""
+    if not TELEGRAM_BOT_TOKEN or not target_chat_id:
         return
 
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     payload = json.dumps({
-        "chat_id": TELEGRAM_CHAT_ID,
+        "chat_id": target_chat_id,
         "text": message,
         "parse_mode": "Markdown"
     }).encode("utf-8")
@@ -30,7 +29,6 @@ def send_alert(message):
         print(f"⚠️ Failed to send Telegram alert: {e}")
 
 def fetch_tokens():
-    """Fetches tokens from Gist if GIST_ID is provided, otherwise reads local sessions.json."""
     if GIST_ID:
         gist_url = f"https://gist.githubusercontent.com/raw/{GIST_ID}/sessions.json"
         try:
@@ -47,16 +45,22 @@ def fetch_tokens():
         print("❌ No tokens found locally or in Gist.")
         return {}
 
-def reserve_for_account(page, account_name):
+def reserve_for_account(page, account_name, user_chat_id):
     print(f"\n📌 Processing: {account_name}")
     page.goto(TARGET_URL)
     page.wait_for_timeout(3000)
 
-    # Check for session expiration redirect
+    # Detect Session Expiration Redirect
     if "resto.php" in page.url and "restaurant.php" not in page.url:
-        msg = f"🚨 *INSAT Reservation Alert*\nSession expired for *{account_name}*! Run `tokens.py` locally to refresh."
-        print(f"❌ {msg}")
-        send_alert(msg)
+        err_msg = f"🚨 *INSAT Reservation Alert*\nSession EXPIRED for *{account_name}*! Run `tokens.py` locally to refresh."
+        print(f"❌ {err_msg}")
+        
+        # ALWAYS alert YOU (Admin) when a session drops
+        send_telegram(err_msg, ADMIN_CHAT_ID)
+        
+        # Also alert the user IF they have a chat_id
+        if user_chat_id and user_chat_id != ADMIN_CHAT_ID:
+            send_telegram(err_msg, user_chat_id)
         return False
 
     checkboxes = page.query_selector_all("input[type='checkbox']")
@@ -74,9 +78,12 @@ def reserve_for_account(page, account_name):
     if submit_btn and selected_count > 0:
         submit_btn.click()
         page.wait_for_timeout(2000)
-        msg = f"✅ *Meals Booked!*\nReserved *{selected_count}* new meal(s) for *{account_name}*!"
-        print(f"🎉 {msg}")
-        send_alert(msg)
+        
+        success_msg = f"✅ *Meals Booked!*\nReserved *{selected_count}* new meal(s) for *{account_name}*!"
+        print(f"🎉 {success_msg}")
+        
+        # Send ONLY to individual user (If chat_id is empty, send_telegram does nothing)
+        send_telegram(success_msg, user_chat_id)
     else:
         print(f"ℹ️ All available meals were already booked for {account_name}.")
     
@@ -85,13 +92,20 @@ def reserve_for_account(page, account_name):
 def run_reserve_all():
     tokens = fetch_tokens()
     if not tokens:
-        send_alert("❌ Missing session tokens! Run `tokens.py` locally.")
+        send_telegram("❌ Missing session tokens in Gist! Please run `tokens.py`.", ADMIN_CHAT_ID)
         return
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
 
-        for name, phpsessid in tokens.items():
+        for name, data in tokens.items():
+            if isinstance(data, dict):
+                phpsessid = data.get("phpsessid")
+                user_chat_id = data.get("chat_id")
+            else:
+                phpsessid = data
+                user_chat_id = ""
+
             context = browser.new_context()
             context.add_cookies([{
                 "name": "PHPSESSID",
@@ -101,9 +115,12 @@ def run_reserve_all():
 
             page = context.new_page()
             try:
-                reserve_for_account(page, name)
+                reserve_for_account(page, name, user_chat_id)
             except Exception as e:
-                print(f"❌ Error processing {name}: {e}")
+                err_msg = f"⚠️ Script error processing *{name}*: {e}"
+                print(f"❌ {err_msg}")
+                # ALWAYS alert YOU on unexpected execution errors
+                send_telegram(err_msg, ADMIN_CHAT_ID)
             finally:
                 context.close()
 
