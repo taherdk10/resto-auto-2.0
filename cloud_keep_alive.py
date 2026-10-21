@@ -2,10 +2,9 @@ import os
 import json
 import urllib.request
 
-# Environment Variables injected via GitHub Repository Secrets
 GIST_ID = os.environ.get("GIST_ID")
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
-TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
+ADMIN_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")  # YOUR Admin Chat ID secret
 
 if not GIST_ID:
     raise ValueError("❌ Missing GIST_ID environment variable.")
@@ -13,14 +12,14 @@ if not GIST_ID:
 GIST_RAW_URL = f"https://gist.githubusercontent.com/raw/{GIST_ID}/sessions.json"
 PING_URL = "https://quickcardcampus.digi-sys.net/dashboard/admin/restaurant.php?page=reservation"
 
-def send_alert(message):
-    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
-        print("⚠️ Telegram credentials not configured in secrets. Skipping alert.")
+def send_telegram(message, target_chat_id):
+    """Sends Telegram message only if target_chat_id is valid and non-empty."""
+    if not TELEGRAM_BOT_TOKEN or not target_chat_id:
         return
 
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     payload = json.dumps({
-        "chat_id": TELEGRAM_CHAT_ID,
+        "chat_id": target_chat_id,
         "text": message,
         "parse_mode": "Markdown"
     }).encode("utf-8")
@@ -47,7 +46,15 @@ def ping_portal():
         print("❌ No active tokens found in Gist.")
         return
 
-    for name, phpsessid in tokens.items():
+    for name, data in tokens.items():
+        # Handle both dict structure and legacy string structure
+        if isinstance(data, dict):
+            phpsessid = data.get("phpsessid")
+            user_chat_id = data.get("chat_id")
+        else:
+            phpsessid = data
+            user_chat_id = ""
+
         try:
             req = urllib.request.Request(
                 PING_URL,
@@ -59,9 +66,15 @@ def ping_portal():
             with urllib.request.urlopen(req) as resp:
                 final_url = resp.geturl()
                 if "resto.php" in final_url and "restaurant.php" not in final_url:
-                    msg = f"🚨 *INSAT Session Alert*\nSession EXPIRED for account: *{name}*!\nRun `tokens.py` to refresh."
+                    msg = f"🚨 *INSAT Session Alert*\nSession EXPIRED for account: *{name}*!\nRun `tokens.py` locally to refresh."
                     print(msg)
-                    send_alert(msg)
+                    
+                    # ALWAYS notify YOU (Admin)
+                    send_telegram(msg, ADMIN_CHAT_ID)
+                    
+                    # Notify user too IF they provided a Chat ID
+                    if user_chat_id and user_chat_id != ADMIN_CHAT_ID:
+                        send_telegram(msg, user_chat_id)
                 else:
                     print(f"📡 Keep-alive ping SUCCESSFUL for [{name}].")
         except Exception as e:
