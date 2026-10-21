@@ -29,20 +29,27 @@ def send_telegram(message, target_chat_id):
         print(f"⚠️ Failed to send Telegram alert: {e}")
 
 def fetch_tokens():
-    if GIST_ID:
-        gist_url = f"https://gist.githubusercontent.com/raw/{GIST_ID}/sessions.json"
-        try:
-            req = urllib.request.Request(gist_url, headers={"Cache-Control": "no-cache"})
-            with urllib.request.urlopen(req) as resp:
-                return json.loads(resp.read().decode("utf-8"))
-        except Exception as e:
-            print(f"⚠️ Error fetching tokens from Gist: {e}")
+    if not GIST_ID:
+        print("❌ Missing GIST_ID environment variable.")
+        return {}
 
+    # Hits GitHub API directly to bypass 5-minute raw Gist CDN caching
+    api_url = f"https://api.github.com/gists/{GIST_ID}"
     try:
-        with open("sessions.json", "r") as f:
-            return json.load(f)
-    except FileNotFoundError:
-        print("❌ No tokens found locally or in Gist.")
+        req = urllib.request.Request(
+            api_url, 
+            headers={
+                "User-Agent": "INSAT-Bot",
+                "Accept": "application/vnd.github.v3+json",
+                "Cache-Control": "no-cache"
+            }
+        )
+        with urllib.request.urlopen(req) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            content = data["files"]["sessions.json"]["content"]
+            return json.loads(content)
+    except Exception as e:
+        print(f"⚠️ Error fetching tokens from Gist API: {e}")
         return {}
 
 def reserve_for_account(page, account_name, user_chat_id):
