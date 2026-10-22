@@ -4,16 +4,12 @@ import urllib.request
 
 GIST_ID = os.environ.get("GIST_ID")
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
-ADMIN_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")  # YOUR Admin Chat ID secret
+ADMIN_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 
-if not GIST_ID:
-    raise ValueError("❌ Missing GIST_ID environment variable.")
-
-GIST_RAW_URL = f"https://gist.githubusercontent.com/raw/{GIST_ID}/sessions.json"
 PING_URL = "https://quickcardcampus.digi-sys.net/dashboard/admin/restaurant.php?page=reservation"
+USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
 def send_telegram(message, target_chat_id):
-    """Sends Telegram message only if target_chat_id is valid and non-empty."""
     if not TELEGRAM_BOT_TOKEN or not target_chat_id:
         return
 
@@ -36,7 +32,6 @@ def fetch_tokens():
         print("❌ Missing GIST_ID environment variable.")
         return {}
 
-    # Hits GitHub API directly to bypass 5-minute raw Gist CDN caching
     api_url = f"https://api.github.com/gists/{GIST_ID}"
     try:
         req = urllib.request.Request(
@@ -62,7 +57,6 @@ def ping_portal():
         return
 
     for name, data in tokens.items():
-        # Handle both dict structure and legacy string structure
         if isinstance(data, dict):
             phpsessid = data.get("phpsessid")
             user_chat_id = data.get("chat_id")
@@ -75,7 +69,7 @@ def ping_portal():
                 PING_URL,
                 headers={
                     "Cookie": f"PHPSESSID={phpsessid}",
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+                    "User-Agent": USER_AGENT  # Exact match with tokens.py
                 }
             )
             with urllib.request.urlopen(req) as resp:
@@ -84,10 +78,7 @@ def ping_portal():
                     msg = f"🚨 *INSAT Session Alert*\nSession EXPIRED for account: *{name}*!\nRun `tokens.py` locally to refresh."
                     print(msg)
                     
-                    # ALWAYS notify YOU (Admin)
                     send_telegram(msg, ADMIN_CHAT_ID)
-                    
-                    # Notify user too IF they provided a Chat ID
                     if user_chat_id and user_chat_id != ADMIN_CHAT_ID:
                         send_telegram(msg, user_chat_id)
                 else:
