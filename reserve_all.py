@@ -4,13 +4,13 @@ import urllib.request
 from playwright.sync_api import sync_playwright
 
 TARGET_URL = "https://quickcardcampus.digi-sys.net/dashboard/admin/restaurant.php?page=reservation"
+USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
 GIST_ID = os.environ.get("GIST_ID")
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
-ADMIN_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")  # YOUR Admin Chat ID secret
+ADMIN_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 
 def send_telegram(message, target_chat_id):
-    """Sends Telegram message only if target_chat_id is valid and non-empty."""
     if not TELEGRAM_BOT_TOKEN or not target_chat_id:
         return
 
@@ -33,7 +33,6 @@ def fetch_tokens():
         print("❌ Missing GIST_ID environment variable.")
         return {}
 
-    # Hits GitHub API directly to bypass 5-minute raw Gist CDN caching
     api_url = f"https://api.github.com/gists/{GIST_ID}"
     try:
         req = urllib.request.Request(
@@ -57,15 +56,11 @@ def reserve_for_account(page, account_name, user_chat_id):
     page.goto(TARGET_URL)
     page.wait_for_timeout(3000)
 
-    # Detect Session Expiration Redirect
     if "resto.php" in page.url and "restaurant.php" not in page.url:
         err_msg = f"🚨 *INSAT Reservation Alert*\nSession EXPIRED for *{account_name}*! Run `tokens.py` locally to refresh."
         print(f"❌ {err_msg}")
         
-        # ALWAYS alert YOU (Admin) when a session drops
         send_telegram(err_msg, ADMIN_CHAT_ID)
-        
-        # Also alert the user IF they have a chat_id
         if user_chat_id and user_chat_id != ADMIN_CHAT_ID:
             send_telegram(err_msg, user_chat_id)
         return False
@@ -88,8 +83,6 @@ def reserve_for_account(page, account_name, user_chat_id):
         
         success_msg = f"✅ *Meals Booked!*\nReserved *{selected_count}* new meal(s) for *{account_name}*!"
         print(f"🎉 {success_msg}")
-        
-        # Send ONLY to individual user (If chat_id is empty, send_telegram does nothing)
         send_telegram(success_msg, user_chat_id)
     else:
         print(f"ℹ️ All available meals were already booked for {account_name}.")
@@ -113,7 +106,8 @@ def run_reserve_all():
                 phpsessid = data
                 user_chat_id = ""
 
-            context = browser.new_context()
+            # Force exact Windows User-Agent in Linux GitHub runner
+            context = browser.new_context(user_agent=USER_AGENT)
             context.add_cookies([{
                 "name": "PHPSESSID",
                 "value": phpsessid,
@@ -126,7 +120,6 @@ def run_reserve_all():
             except Exception as e:
                 err_msg = f"⚠️ Script error processing *{name}*: {e}"
                 print(f"❌ {err_msg}")
-                # ALWAYS alert YOU on unexpected execution errors
                 send_telegram(err_msg, ADMIN_CHAT_ID)
             finally:
                 context.close()
