@@ -66,8 +66,18 @@ def fetch_tokens():
 def reserve_for_account(page, account_name, user_chat_id):
     print(f"\n📌 Processing: {account_name}")
     
-    # Wait for DOM content to load rather than full page assets, with extended timeout
-    page.goto(TARGET_URL, wait_until="domcontentloaded", timeout=60000)
+    # Retry mechanism for page navigation
+    max_retries = 3
+    for attempt in range(1, max_retries + 1):
+        try:
+            page.goto(TARGET_URL, wait_until="domcontentloaded", timeout=30000)
+            break
+        except Exception as e:
+            if attempt == max_retries:
+                raise e
+            print(f"⏳ Attempt {attempt}/{max_retries} failed for {account_name}. Retrying in 5s...")
+            time.sleep(5)
+
     page.wait_for_timeout(3000)
 
     if "resto.php" in page.url and "restaurant.php" not in page.url:
@@ -136,10 +146,17 @@ def run_reserve_all():
             try:
                 reserve_for_account(page, name, user_chat_id)
             except Exception as e:
-                err_msg = f"⚠️ Script error processing *{name}*: {e}"
-                print(f"❌ {err_msg}")
+                err_str = str(e)
+                # Clean up raw Playwright call logs into short, readable alerts
+                if "ERR_TIMEDOUT" in err_str or "Timeout" in err_str:
+                    clean_err = f"🌐 *Server Timeout*: DIGISYS server failed to respond for *{name}*."
+                else:
+                    first_line = err_str.splitlines()[0] if err_str else "Unknown Error"
+                    clean_err = f"⚠️ *Script Error ({name})*: {first_line}"
+
+                print(f"❌ {clean_err}")
                 # Sent via Bot 1 (System Alerts)
-                send_system_alert(err_msg, ADMIN_CHAT_ID)
+                send_system_alert(clean_err, ADMIN_CHAT_ID)
             finally:
                 context.close()
 
