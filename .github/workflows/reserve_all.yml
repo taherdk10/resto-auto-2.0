@@ -25,8 +25,20 @@ jobs:
           python -m pip install --upgrade pip
           pip install playwright
 
-      - name: Install Playwright Browsers & System Dependencies
+      - name: Cache Playwright Browsers
+        uses: actions/cache@v4
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-chromium
+
+      - name: Download Chromium (Runs only on cache miss)
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
         run: playwright install chromium --with-deps
+
+      - name: Install Linux OS Dependencies (Runs fast on cache hit)
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: playwright install-deps chromium
 
       - name: Execute Reservation Engine
         env:
