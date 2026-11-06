@@ -103,8 +103,12 @@ def reserve_for_account(page, account_name, user_chat_id):
 
     submit_btn = page.query_selector("button[type='submit'], input[type='submit'], button:has-text('Enregistrer'), button:has-text('Valider')")
     if submit_btn and selected_count > 0:
-        submit_btn.click()
-        page.wait_for_timeout(2000)
+        try:
+            with page.expect_navigation(wait_until="networkidle", timeout=15000):
+                submit_btn.click()
+        except Exception:
+            # Fallback if page updates via AJAX without a full redirect
+            page.wait_for_timeout(3000)
         
         success_msg = f"✅ *Meals Booked!*\nReserved *{selected_count}* new meal(s) for *{account_name}*!"
         print(f"🎉 {success_msg}")
@@ -139,7 +143,8 @@ def run_reserve_all():
             context.add_cookies([{
                 "name": "PHPSESSID",
                 "value": phpsessid,
-                "url": "https://quickcardcampus.digi-sys.net"
+                "domain": "quickcardcampus.digi-sys.net",
+                "path": "/"
             }])
 
             page = context.new_page()
