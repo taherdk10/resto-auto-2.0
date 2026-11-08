@@ -22,7 +22,7 @@ def send_telegram(message, target_chat_id):
     
     try:
         req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"})
-        with urllib.request.urlopen(req):
+        with urllib.request.urlopen(req, timeout=10):
             pass
     except Exception as e:
         print(f"⚠️ Failed to send Telegram alert: {e}")
@@ -42,7 +42,7 @@ def fetch_tokens():
                 "Cache-Control": "no-cache"
             }
         )
-        with urllib.request.urlopen(req) as resp:
+        with urllib.request.urlopen(req, timeout=10) as resp:
             data = json.loads(resp.read().decode("utf-8"))
             content = data["files"]["sessions.json"]["content"]
             return json.loads(content)
@@ -69,10 +69,10 @@ def ping_portal():
                 PING_URL,
                 headers={
                     "Cookie": f"PHPSESSID={phpsessid}",
-                    "User-Agent": USER_AGENT  # Exact match with tokens.py
+                    "User-Agent": USER_AGENT
                 }
             )
-            with urllib.request.urlopen(req) as resp:
+            with urllib.request.urlopen(req, timeout=15) as resp:
                 final_url = resp.geturl()
                 if "resto.php" in final_url and "restaurant.php" not in final_url:
                     msg = f"🚨 *INSAT Session Alert*\nSession EXPIRED for account: *{name}*!\nRun `tokens.py` locally to refresh."
