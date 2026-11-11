@@ -5,9 +5,15 @@ on:
     types: [ping-session]
   workflow_dispatch:
 
+# Automatically cancels old queued/hanging ping jobs
+concurrency:
+  group: keep-alive-ping
+  cancel-in-progress: true
+
 jobs:
   ping:
     runs-on: ubuntu-latest
+    timeout-minutes: 2  # Hard kill if a VM hangs
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
