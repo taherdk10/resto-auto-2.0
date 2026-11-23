@@ -45,6 +45,22 @@ def fetch_tokens():
         print("❌ Missing GIST_ID environment variable.")
         return {}
 
+    # Uses GitHub's Raw CDN to bypass the 60 req/hr api.github.com IP limit
+    raw_url = f"https://gist.githubusercontent.com/raw/{GIST_ID}/sessions.json?t={int(time.time())}"
+    try:
+        req = urllib.request.Request(
+            raw_url,
+            headers={
+                "User-Agent": "INSAT-Bot",
+                "Cache-Control": "no-cache"
+            }
+        )
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except Exception as e:
+        print(f"⚠️ Error fetching tokens from Gist Raw CDN: {e}")
+        return {}
+
     api_url = f"https://api.github.com/gists/{GIST_ID}"
     try:
         req = urllib.request.Request(
